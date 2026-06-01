@@ -15,7 +15,8 @@ PREV = ['A', 'B', 'C', 'D', 'E']  # previous-year column (A unused for base)
 # ----------------------------------------------------------------------------
 sss      = [0.030, 0.035, 0.030, 0.025, 0.025]
 newstore = [0.020, 0.015, 0.015, 0.015, 0.015]
-ebitda_m = [0.350, 0.355, 0.360, 0.365, 0.370]
+ebitda_m = [0.300, 0.305, 0.310, 0.315, 0.320]   # franchise-heavy QSR, within 20-35%
+cogs_pct = [0.32, 0.315, 0.31, 0.305, 0.30]        # low COGS: royalty/franchise-led mix
 dep_pct  = [0.05]*5
 tax_rate = [0.21]*5
 int_rate = [0.05]*5
@@ -31,7 +32,7 @@ rev = [2000.0]
 for i in range(1, 5):
     rev.append(rev[-1] * (1 + rev_growth[i]))
 
-cogs   = [r*0.4 for r in rev]
+cogs   = [rev[i]*cogs_pct[i] for i in range(5)]
 gp     = [rev[i]-cogs[i] for i in range(5)]
 ebitda = [rev[i]*ebitda_m[i] for i in range(5)]
 sga    = [gp[i]-ebitda[i] for i in range(5)]
@@ -81,7 +82,17 @@ debt_flow = [-100.0] + [lt_debt[i]-lt_debt[i-1] for i in range(1, 5)]
 fin_cf = [debt_flow[i]+dividends[i] for i in range(5)]
 net_chg = [ocf[i]+icf[i]+fin_cf[i] for i in range(5)]
 
-open_cash = [775.815]
+# Base-year (2024) opening cash is an auto-computed balancing plug, so the balance
+# sheet ties out exactly in the actual/base year regardless of assumptions; all
+# later years then roll forward consistently (cash from CF, RE = prior + NI + divs).
+re_base = 2970.0
+_noncash_assets_2024 = (ar[0] + inv[0] + prepaid[0] + ppe[0] + rou[0] + intang[0] + gw[0])
+_tle_2024 = ((ap[0] + accrued[0] + st_debt[0] + cur_lease[0])
+             + (lt_debt[0] + lease_liab[0] + def_tax[0])
+             + (share_cap[0] + re_base + apic[0] + treasury[0]))
+_open_cash_0 = (_tle_2024 - _noncash_assets_2024) - net_chg[0]
+
+open_cash = [_open_cash_0]
 close_cash = [open_cash[0]+net_chg[0]]
 for i in range(1, 5):
     open_cash.append(close_cash[-1])
@@ -89,7 +100,7 @@ for i in range(1, 5):
 
 cash = close_cash[:]
 
-re = [2970.0]
+re = [re_base]
 for i in range(1, 5):
     re.append(re[-1]+ni[i]+dividends[i])
 
@@ -186,11 +197,11 @@ def build_rows():
     for i in range(1,5):
         sc_cells.append(F(f"{PREV[i]}10*(1+{COL[i]}4)", store[i]))
     A.append(([T("Store Count")] + sc_cells, False, "int"))
-    A.append(([BLANK()]*6, False, None))                                   # 11
+    A.append(([T("COGS % of Revenue")] + [N(v) for v in cogs_pct], False, "pct"))  # 11
     A.append(([T("Notes:")] + [BLANK()]*5, True, None))                    # 12
     A.append(([T("All figures USD millions except CapEx per Store ($) & Store Count (units).")] + [BLANK()]*5, False, None))
     A.append(([T("2024 = base/actual year (hard-coded). 2025-2028 = live formulas.")] + [BLANK()]*5, False, None))
-    A.append(([T("COGS = 40% of revenue; SG&A is the plug so EBITDA = EBITDA Margin %.")] + [BLANK()]*5, False, None))
+    A.append(([T("COGS driven by COGS % of Revenue (row 11); SG&A is the plug so EBITDA = EBITDA Margin %.")] + [BLANK()]*5, False, None))
     sheets["Assumptions"] = A
 
     # ---------------- IS ----------------
@@ -198,7 +209,7 @@ def build_rows():
     I.append(([T("Line Item")] + [N(y) for y in YEARS], True, None))
     I.append(([T("Revenue"), N(2000)] +
               [F(f"{PREV[i]}2*(1+Assumptions!{COL[i]}2)", rev[i]) for i in range(1,5)], False, "num"))
-    I.append(([T("COGS")] + [F(f"{COL[i]}2*0.4", cogs[i]) for i in range(5)], False, "num"))
+    I.append(([T("COGS")] + [F(f"{COL[i]}2*Assumptions!{COL[i]}11", cogs[i]) for i in range(5)], False, "num"))
     I.append(([T("Gross Profit")] + [F(f"{COL[i]}2-{COL[i]}3", gp[i]) for i in range(5)], False, "num"))
     I.append(([T("Gross Margin %")] + [F(f"{COL[i]}4/{COL[i]}2", gp[i]/rev[i]) for i in range(5)], False, "pct"))
     I.append(([T("SG&A")] + [F(f"{COL[i]}4-{COL[i]}7", sga[i]) for i in range(5)], False, "num"))
@@ -283,7 +294,7 @@ def build_rows():
     C.append(([T("Dividends")] + [F(f"-0.5*IS!{COL[i]}13", dividends[i]) for i in range(5)], False, "num"))
     C.append(([T("Financing Cash Flow")] + [F(f"{COL[i]}8+{COL[i]}9", fin_cf[i]) for i in range(5)], True, "num"))
     C.append(([T("Net Change in Cash")] + [F(f"{COL[i]}5+{COL[i]}7+{COL[i]}10", net_chg[i]) for i in range(5)], True, "num"))
-    oc_cells = [N(775.815)] + [F(f"{PREV[i]}13", open_cash[i]) for i in range(1,5)]
+    oc_cells = [N(open_cash[0])] + [F(f"{PREV[i]}13", open_cash[i]) for i in range(1,5)]
     C.append(([T("Opening Cash")] + oc_cells, False, "num"))
     C.append(([T("Closing Cash")] + [F(f"{COL[i]}12+{COL[i]}11", close_cash[i]) for i in range(5)], True, "num"))
     C.append(([T("Interest Paid (memo; already in Net Income)")] +
@@ -419,6 +430,7 @@ def write_xlsx(path, sheets):
             z.writestr(f"xl/worksheets/sheet{i}.xml", sheet_xml(sheets[name]))
 
 sheets = build_rows()
-out_path = "/projects/sandbox/Burger_King_RBI_3_Statement_Model.xlsx"
+out_path = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                        "Burger_King_RBI_3_Statement_Model.xlsx")
 write_xlsx(out_path, sheets)
 print("\nWrote:", out_path, "(", os.path.getsize(out_path), "bytes )")
